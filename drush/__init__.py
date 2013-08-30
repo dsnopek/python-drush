@@ -20,6 +20,12 @@ class DrushVersionException(Exception):
 class DrushCommandException(Exception):
     pass
 
+#
+# TODO: We could do some magic with meta-classes that would allow __doc__ strings on
+#       commands to show actually useful information to Python developers... Is it
+#       worth it?
+#
+
 class Drush(object):
     """An interface to the Drush command-line program - requires Drush 6 or later."""
 
