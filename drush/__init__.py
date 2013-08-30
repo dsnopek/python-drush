@@ -1,6 +1,7 @@
 
 import subprocess
 import re
+import json
 
 #try:
 #    from cStringIO import StringIO
@@ -14,6 +15,9 @@ class DrushNotFoundException(Exception):
     pass
 
 class DrushVersionException(Exception):
+    pass
+
+class DrushCommandException(Exception):
     pass
 
 class Drush(object):
@@ -107,11 +111,44 @@ class Drush(object):
 
         self.__load_command_methods()
 
-    def __call__(self, command, args, opts):
-        pass
+    def __call__(self, command, args = None, opts = None):
+        # TODO: this should use the --backend argument so we can seperate out messages!
+        if args is None:
+            args = []
+        args = [command] + args
+        if self.__alias is not None:
+            args = ['@' + self.__alias] + args
+        if opts is None:
+            opts = {}
+        opts['format'] = 'json'
+        for k, v in opts.items():
+            if v is True:
+                args = args + ['--%s' % k]
+            elif v is False:
+                pass
+            else:
+                args = args + ['--%s=%s' % (k, v)]
+
+        popen = subprocess.Popen([self.__drush] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = popen.communicate()
+        if popen.returncode == 0:
+            return json.loads(stdout)
+        else:
+            raise DrushCommandException(('Unable to run command "%s":' % ' '.join(args)) + stderr)
 
     def __load_command_methods(self):
-        pass
+        for module_name, module in self('help').items():
+            for name, info in module['commands'].items():
+                if name != 'site-set':
+                    command = DrushCommand(self, info)
+                    self.__attach_command(command)
+
+    def __attach_command(self, command):
+        names = [command.name] + command.aliases
+        for name in names:
+            if hasattr(self, name):
+                raise DrushCommandException('Command already exists on Drush object: ' + name)
+            setattr(self, name, command)
 
     def site_set(self, site):
         self.__set_alias(site)
@@ -119,7 +156,53 @@ class Drush(object):
 class DrushCommand(object):
     """A callable object which executes a specific Drush command."""
 
-    def __init__(self, info):
-        pass
+    @property
+    def name(self):
+        return self.__name
 
+    @property
+    def command(self):
+        return self.__command
+
+    @property
+    def aliases(self):
+        return self.__aliases
+
+    def __init__(self, drush, info):
+        self.__drush = drush
+        self.__command = info['command']
+        self.__aliases = info['aliases']
+        self.__hidden = info['hidden']
+        self.__scope = info['scope']
+
+        self.__name = self.__command.replace('-', '_')
+
+        self.__setup_arguments(info)
+        self.__setup_docstring(info)
+
+        #import pprint
+        #pprint.pprint(info)
+
+    def __call__(self, *args, **opts):
+        real_opts = {}
+        for name, value in opts.items():
+            real_opts[self.__options[name]['real_name']] = value
+        return self.__drush(self.__command, list(args), opts)
+
+    def __setup_arguments(self, info):
+        self.__options = {}
+
+        if len(info['options']) == 0:
+            return
+
+        for real_name, description in info['options'].items():
+            name = real_name.replace('-', '_')
+            self.__options[name] = {
+                'real_name': real_name,
+                'description': description,
+            }
+            
+    def __setup_docstring(self, info):
+        # TODO: this should take all the options and arguments into account!
+        self.__doc__ = info['description']
 
