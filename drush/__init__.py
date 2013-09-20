@@ -142,6 +142,8 @@ class Drush(object):
             elif v is False:
                 pass
             else:
+                if type(v) is list:
+                    v = ','.join([str(x) for x in v])
                 full_args += ['--%s=%s' % (k, v)]
 
         popen = subprocess.Popen(full_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
